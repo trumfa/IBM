@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    /* Estil Dark Modern - Mode Consulta */
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #0f172a; color: #f8fafc; }
+    
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+    .card { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3); transition: transform 0.2s, box-shadow 0.2s; }
+    /* Efecte hover reduït en mode lectura */
+    .card:hover { border-color: #475569; }
+
+    input, select { background-color: #0f172a !important; border: 1px solid #334155 !important; color: #f1f5f9 !important; }
+    /* Camps desactivats amb aspecte visual clar */
+    input:disabled, select:disabled { opacity: 0.7; cursor: not-allowed; border-color: #1e293b !important; color: #94a3b8 !important; }
+
+    .btn-nav { width: 100%; text-align: left; padding: 14px 16px; border-radius: 10px; transition: all 0.2s; color: #94a3b8; font-weight: 500; display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+    .btn-nav:hover { background-color: #334155; color: white; }
+    .btn-nav.active { background-color: #4f46e5; color: white; box-shadow: 0 0 15px rgba(79, 70, 229, 0.4); }
+
+    .loader { border: 3px solid #334155; border-radius: 50%; border-top: 3px solid #6366f1; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    .comp-table { width: 100%; border-collapse: collapse; }
+    .comp-row { border-bottom: 1px solid #334155; }
+    .comp-row:last-child { border-bottom: none; }
+    .comp-cell { padding: 10px 8px; font-size: 13px; }
+    .comp-cell-head { font-size: 11px; text-transform: uppercase; font-weight: bold; color: #64748b; padding-bottom: 8px; text-align: right; }
+    .comp-val { text-align: right; font-family: monospace; }
+    .comp-total { background-color: #1e293b; font-weight: bold; }
+    .section-head { background-color: #0f172a; color: #94a3b8; font-size: 11px; font-weight: bold; text-transform: uppercase; padding: 8px; letter-spacing: 0.05em; }
+  </style>
+</head>
+<body class="flex h-screen overflow-hidden">
+
+  <!-- BARRA LATERAL (Reduïda) -->
+  <aside class="w-16 md:w-72 bg-slate-950 flex flex-col border-r border-slate-800 z-20 transition-all duration-300">
+    <div class="p-6 flex items-center gap-4 border-b border-slate-800">
+      <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+        <i class="fa-solid fa-eye"></i>
+      </div>
+      <div class="hidden md:block">
+        <h1 class="text-white font-bold text-lg tracking-wide leading-tight">Inversions Babi</h1>
+        <p class="text-slate-500 text-xs uppercase font-bold tracking-wider">Mode Consulta</p>
+      </div>
+    </div>
+    
+    <nav class="flex-1 p-4 mt-2 overflow-y-auto">
+      <p class="hidden md:block text-xs font-bold text-slate-600 uppercase mb-2 px-2">Visualització</p>
+      <button onclick="nav('view-dashboard')" id="btn-dashboard" class="btn-nav active">
+        <i class="fa-solid fa-chart-pie text-lg w-6 text-center"></i> <span class="hidden md:block">Panell de Control</span>
+      </button>
+      <button onclick="nav('view-loan')" id="btn-loan" class="btn-nav">
+        <i class="fa-solid fa-sack-dollar text-lg w-6 text-center"></i> <span class="hidden md:block">Amortització Prèstec</span>
+      </button>
+      <button onclick="nav('view-contracts'); loadContracts();" id="btn-contracts" class="btn-nav">
+        <i class="fa-solid fa-users text-lg w-6 text-center"></i> <span class="hidden md:block">Llogaters</span>
+      </button>
+
+      <p class="hidden md:block text-xs font-bold text-slate-600 uppercase mb-2 px-2 mt-6">Històric</p>
+      <button onclick="nav('view-expense-list'); loadExpensesList();" id="btn-expense-list" class="btn-nav">
+        <i class="fa-solid fa-table-list text-lg w-6 text-center"></i> <span class="hidden md:block">Veure Factures</span>
+      </button>
+    </nav>
+
+    <div class="p-4 border-t border-slate-800">
+      <div class="flex items-center gap-3 p-2 rounded-lg bg-slate-900/50 border border-slate-800">
+        <div class="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">Vi</div>
+        <div class="hidden md:block">
+          <p class="text-sm font-medium text-white">Visitant</p>
+          <p class="text-xs text-slate-500">Només Lectura</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- CONTINGUT PRINCIPAL -->
+  <main class="flex-1 flex flex-col bg-slate-900 overflow-hidden relative">
+    
+    <!-- Loading Overlay -->
+    <div id="loading-indicator" class="hidden absolute top-6 right-6 z-50 bg-slate-800 border border-slate-700 px-5 py-3 rounded-full shadow-2xl flex items-center gap-3 text-sm font-bold text-indigo-400">
+       <div class="loader"></div> Carregant dades...
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-4 md:p-10">
+      
+      <!-- DASHBOARD (Sense botons d'acció) -->
+      <div id="view-dashboard" class="space-y-8 max-w-full mx-auto">
+         <header class="flex justify-between items-end">
+            <div>
+              <h1 class="text-3xl font-bold text-white mb-1">Estat General</h1>
+              <p class="text-slate-400">Resum de l'estat actual de l'edifici (Vista protegida).</p>
+            </div>
+            <div class="text-right hidden sm:block">
+              <p class="text-xs text-slate-500 font-bold uppercase">Data d'avui</p>
+              <p class="text-slate-300 font-mono" id="current-date-display">--/--/----</p>
+            </div>
+         </header>
+
+         <!-- KPI CARDS -->
+         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Card 1 -->
+            <div class="card p-6 relative overflow-hidden group">
+               <div class="absolute right-0 top-0 w-32 h-32 bg-indigo-500/10 rounded-bl-full -mr-8 -mt-8"></div>
+               <div class="flex justify-between items-start relative z-10">
+                  <div>
+                     <p class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-1">Preu Facturació</p>
+                     <h2 class="text-4xl font-bold text-white mt-1" id="dash-preu">--</h2>
+                  </div>
+                  <div class="w-12 h-12 rounded-xl bg-indigo-500/20 flex items-center justify-center text-indigo-400 text-xl"><i class="fa-solid fa-tag"></i></div>
+               </div>
+               <div class="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center">
+                 <p class="text-xs text-slate-400">Cost actual repercutit</p>
+                 <span class="text-xs bg-indigo-500/20 text-indigo-300 px-2 py-1 rounded">Informatiu</span>
+               </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="card p-6 relative overflow-hidden group">
+               <div class="absolute right-0 top-0 w-32 h-32 bg-orange-500/10 rounded-bl-full -mr-8 -mt-8"></div>
+               <div class="flex justify-between items-start relative z-10">
+                  <div>
+                     <p class="text-xs font-bold text-orange-400 uppercase tracking-wider mb-1">Últim Preu Compra</p>
+                     <h2 class="text-4xl font-bold text-white mt-1" id="dash-real-price">--</h2>
+                  </div>
+                  <div class="w-12 h-12 rounded-xl bg-orange-500/20 flex items-center justify-center text-orange-400 text-xl"><i class="fa-solid fa-cart-shopping"></i></div>
+               </div>
+               <div class="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center h-8">
+                  <div id="alert-price" class="hidden flex items-center gap-2 text-rose-400 text-xs font-bold bg-rose-500/10 px-2 py-1 rounded">
+                      <i class="fa-solid fa-triangle-exclamation"></i> <span id="dash-price-diff"></span>
+                  </div>
+                  <span id="dash-no-alert" class="text-xs text-emerald-400 flex items-center gap-1"><i class="fa-solid fa-check"></i> Preu estable</span>
+               </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="card p-6 relative overflow-hidden group">
+               <div class="absolute right-0 top-0 w-32 h-32 bg-emerald-500/10 rounded-bl-full -mr-8 -mt-8"></div>
+               <div class="flex justify-between items-start relative z-10">
+                  <div>
+                     <p class="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">Nivell Dipòsit</p>
+                     <h2 class="text-4xl font-bold text-white mt-1" id="dash-level-value">-- %</h2>
+                  </div>
+                  <div class="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl"><i class="fa-solid fa-battery-half"></i></div>
+               </div>
+               <div class="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center">
+                 <p class="text-xs text-slate-400">Última lectura</p>
+                 <span class="text-xs font-mono text-slate-300" id="dash-last-level-date">--</span>
+               </div>
+            </div>
+         </div>
+
+         <!-- DYNAMIC CHART & TABLE SECTION -->
+         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- TAULA COMPARATIVA -->
+            <div class="card p-6 lg:col-span-2 flex flex-col" style="min-height: 500px;">
+               <div class="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4 border-b border-slate-700 pb-4">
+                   <h3 class="font-bold text-white flex items-center gap-2"><i class="fa-solid fa-table-list text-emerald-400"></i> Desglossament Financer (Amb IGI)</h3>
+                   <div class="flex items-center gap-3">
+                       <span class="text-xs text-slate-500 font-bold uppercase">Comparar:</span>
+                       <select id="compare-year-1" onchange="updateComparisonTable()" class="p-2 text-xs rounded bg-slate-900 border border-slate-600 text-slate-300 focus:border-indigo-500 font-bold"></select>
+                       <span class="text-slate-500 text-xs font-bold">vs</span>
+                       <select id="compare-year-2" onchange="updateComparisonTable()" class="p-2 text-xs rounded bg-slate-900 border border-slate-600 text-slate-300 focus:border-indigo-500 font-bold"></select>
+                   </div>
+               </div>
+               
+               <div class="flex-1 overflow-y-auto">
+                   <table class="comp-table">
+                       <thead>
+                           <tr>
+                               <th class="comp-cell-head text-left">Concepte</th>
+                               <th class="comp-cell-head" id="th-y1">Any 1</th>
+                               <th class="comp-cell-head" id="th-y2">Any 2</th>
+                           </tr>
+                       </thead>
+                       <tbody id="comparison-table-body"></tbody>
+                   </table>
+               </div>
+            </div>
+
+            <!-- GRÀFIC DINÀMIC -->
+            <div class="card p-6 flex flex-col">
+               <div class="flex flex-col justify-between items-start mb-4 gap-2 border-b border-slate-700 pb-4">
+                   <h3 class="font-bold text-white flex items-center gap-2"><i class="fa-solid fa-chart-column text-indigo-500"></i> Evolució</h3>
+                   <div class="flex flex-col w-full gap-2">
+                       <select id="chart-period" onchange="updateDynamicChart()" class="w-full p-2 text-xs rounded bg-slate-900 border border-slate-600 text-slate-300 focus:border-indigo-500"><option value="1">Últim mes</option><option value="3">Últims 3 mesos</option><option value="6">Últims 6 mesos</option><option value="12" selected>Últims 12 mesos</option><option value="all">Tot l'històric</option></select>
+                       <select id="chart-data1" onchange="updateDynamicChart()" class="w-full p-2 text-xs rounded bg-slate-900 border border-slate-600 text-slate-300 focus:border-indigo-500"><option value="refills_cost_smoothed">Cost Gasoil (Suavitzat)</option><option value="refills_lit_smoothed">Litres Càrrega (Suavitzat)</option><option value="consumption_charged">Ingrés Gasoil (Repercutit)</option><option value="rent_income">Ingrés Lloguer</option><option value="total_income">Ingrés Total</option><option value="consumption_lit">Consum (L)</option></select>
+                       <select id="chart-data2" onchange="updateDynamicChart()" class="w-full p-2 text-xs rounded bg-slate-900 border border-slate-600 text-slate-300 focus:border-indigo-500"><option value="consumption_charged">Ingrés Gasoil (Repercutit)</option><option value="refills_cost_smoothed">Cost Gasoil (Suavitzat)</option><option value="refills_lit_smoothed">Litres Càrrega (Suavitzat)</option><option value="rent_income">Ingrés Lloguer</option><option value="total_income">Ingrés Total</option><option value="consumption_lit">Consum (L)</option><option value="none">-- Cap --</option></select>
+                   </div>
+               </div>
+               <div class="relative h-64 w-full flex-1"><canvas id="dynamicChart"></canvas></div>
+            </div>
+            
+         </div>
+      </div>
+
+      <!-- VISTA TAULA AMORTITZACIÓ (Calculadora sense guardar) -->
+      <div id="view-loan" class="hidden max-w-5xl mx-auto space-y-6">
+         <div class="flex items-center gap-4 mb-6">
+            <button onclick="nav('view-dashboard')" class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 flex items-center justify-center transition"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2 class="text-2xl font-bold text-white">Simulador d'Amortització</h2>
+         </div>
+         <div class="card p-6">
+             <div class="flex items-end gap-4 mb-6 border-b border-slate-700 pb-6">
+                 <div><label class="text-xs font-bold text-slate-500 uppercase">Any</label><select id="loan-year-select" onchange="updateLoanView()" class="w-full p-3 rounded-lg bg-slate-900 border border-slate-600 text-white font-bold"></select></div>
+                 <div><label class="text-xs font-bold text-slate-500 uppercase">Interès Simulació (%)</label><input type="number" id="loan-interest-input" value="3.11" step="0.01" class="w-full p-3 rounded-lg bg-slate-900 border border-slate-600 text-white font-bold text-emerald-400" onchange="updateLoanView()"></div>
+                 <div class="flex-1 text-right">
+                     <p class="text-xs text-slate-500 uppercase">Total Pagat (Any)</p>
+                     <p class="text-2xl font-bold text-white" id="loan-year-total">0,00 €</p>
+                 </div>
+             </div>
+             <div class="overflow-x-auto rounded-xl border border-slate-700">
+                 <table class="w-full text-left text-sm text-slate-400">
+                     <thead class="bg-slate-800 text-xs uppercase text-slate-200">
+                         <tr><th class="p-3">Mes</th><th class="p-3 text-right">Quota</th><th class="p-3 text-right text-rose-400">Interès</th><th class="p-3 text-right text-emerald-400">Amortització</th><th class="p-3 text-right">Pendent</th></tr>
+                     </thead>
+                     <tbody id="loan-table-body" class="divide-y divide-slate-700 bg-slate-900"></tbody>
+                 </table>
+             </div>
+             <p class="text-xs text-slate-500 mt-4 italic">* Aquesta taula és informativa. Els canvis d'interès aquí no es guarden a la base de dades.</p>
+         </div>
+      </div>
+
+      <!-- VISTA CONTRACTES (Només Lectura) -->
+      <div id="view-contracts" class="hidden max-w-6xl mx-auto space-y-8">
+         <div class="flex justify-between items-center">
+            <div>
+                <h2 class="text-2xl font-bold text-white">Llogaters</h2>
+                <p class="text-slate-400 text-sm">Llistat de contractes.</p>
+            </div>
+         </div>
+         <div id="contracts-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+      </div>
+      
+      <!-- DETALL CONTRACTE (ReadOnly) -->
+      <div id="view-contract-edit" class="hidden max-w-3xl mx-auto">
+         <div class="flex items-center gap-4 mb-8">
+            <button onclick="nav('view-contracts')" class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 text-slate-400 hover:text-white hover:border-slate-500 flex items-center justify-center transition"><i class="fa-solid fa-arrow-left"></i></button>
+            <h2 class="text-2xl font-bold text-white">Detall Contracte</h2>
+         </div>
+         
+         <div class="card p-8 space-y-6">
+             <div class="text-center font-bold text-3xl text-indigo-400 mb-8 bg-slate-900 p-6 rounded-2xl border border-slate-700" id="edit-id-pis">--</div>
+             
+             <div class="space-y-4">
+                 <div><label class="text-xs font-bold text-slate-500 ml-1">TITULAR</label><input type="text" id="edit-titular" class="w-full p-3 rounded-lg" disabled></div>
+                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">NRT</label><input type="text" id="edit-nrt" class="w-full p-3 rounded-lg" disabled></div>
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">TELÈFON</label><input type="text" id="edit-telefon" class="w-full p-3 rounded-lg" disabled></div>
+                 </div>
+                 <div><label class="text-xs font-bold text-slate-500 ml-1">ADREÇA</label><input type="text" id="edit-adreca" class="w-full p-3 rounded-lg" disabled></div>
+                 <div class="grid grid-cols-2 gap-4">
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">POBLACIÓ</label><input type="text" id="edit-poblacio" class="w-full p-3 rounded-lg" disabled></div>
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">PARRÒQUIA</label><input type="text" id="edit-parroquia" class="w-full p-3 rounded-lg" disabled></div>
+                 </div>
+                 <div><label class="text-xs font-bold text-slate-500 ml-1">EMAIL</label><input type="email" id="edit-mail" class="w-full p-3 rounded-lg" disabled></div>
+                 <div class="grid grid-cols-3 gap-4">
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">PREU (€)</label><input type="number" id="edit-preu" class="w-full p-3 rounded-lg font-bold text-emerald-400" disabled></div>
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">IGI</label><input type="number" id="edit-igi" step="0.001" class="w-full p-3 rounded-lg" disabled></div>
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">ACTIU</label><select id="edit-actiu" class="w-full p-3 rounded-lg" disabled><option value="Sí">Sí</option><option value="No">No</option></select></div>
+                 </div>
+                 <div><label class="text-xs font-bold text-slate-500 ml-1">IBAN</label><input type="text" id="edit-iban" class="w-full p-3 rounded-lg font-mono" disabled></div>
+                 <div class="grid grid-cols-2 gap-4">
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">DATA FINAL</label><input type="date" id="edit-data-fi" class="w-full p-3 rounded-lg" disabled></div>
+                     <div><label class="text-xs font-bold text-slate-500 ml-1">APLICA IPC</label><select id="edit-ipc" class="w-full p-3 rounded-lg" disabled><option value="Sí">Sí</option><option value="No">No</option></select></div>
+                 </div>
+             </div>
+         </div>
+      </div>
+
+      <!-- VISTA LLISTAT FACTURES (Només Lectura) -->
+      <div id="view-expense-list" class="hidden max-w-6xl mx-auto space-y-6">
+         <div class="flex justify-between items-center">
+            <h2 class="text-2xl font-bold text-white">Històric Factures</h2>
+         </div>
+         <div class="overflow-x-auto rounded-xl border border-slate-700">
+             <table class="w-full text-left text-sm text-slate-400">
+                 <thead class="bg-slate-800 text-xs uppercase text-slate-200">
+                     <tr>
+                         <th class="p-4">Data / Sem</th>
+                         <th class="p-4">Proveïdor</th>
+                         <th class="p-4">Num. Fac</th>
+                         <th class="p-4 text-right">Base</th>
+                         <th class="p-4 text-right">IGI</th>
+                     </tr>
+                 </thead>
+                 <tbody id="expenses-table-body" class="divide-y divide-slate-700 bg-slate-900">
+                     <!-- JS omplirà això -->
+                 </tbody>
+             </table>
+         </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    let globalData = {};
+    let dynamicChartInstance = null;
+    let currentLoanSchedule = []; 
+    let loanDataCache = {}; 
+
+    if (typeof Chart !== 'undefined') {
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.borderColor = '#334155';
+    }
+
+    window.onload = function() {
+      document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('ca-ES');
+      toggleLoading(true);
+      google.script.run.withSuccessHandler(response => {
+         try {
+             let data = typeof response === 'string' ? JSON.parse(response) : response;
+             if (data.error) throw new Error(data.error);
+             globalData = data;
+             if (globalData.loanData && globalData.loanData.year) loanDataCache[globalData.loanData.year] = globalData.loanData;
+             
+             initDashboard();
+             initLoanView(); 
+             // No omplim desplegables de nou registre perquè no hi són
+         } catch (e) { console.error(e); alert("Error carregant: " + e.message); } finally { toggleLoading(false); }
+      }).withFailureHandler(err => { alert(err.message); toggleLoading(false); }).getDashboardData();
+    };
+
+    function toggleLoading(show) { const el = document.getElementById('loading-indicator'); if(el) { if(show) el.classList.remove('hidden'); else el.classList.add('hidden'); } }
+    
+    function nav(viewId) {
+       document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
+       document.querySelectorAll('.btn-nav').forEach(el => el.classList.remove('active'));
+       
+       const target = document.getElementById(viewId);
+       if(target) target.classList.remove('hidden');
+       
+       const btnId = 'btn-' + viewId.replace('view-', '');
+       const btn = document.getElementById(btnId);
+       if(btn) btn.classList.add('active');
+       
+       // REFRESH DASHBOARD ON CLICK
+       if(viewId === 'view-dashboard') {
+           toggleLoading(true); 
+           google.script.run.withSuccessHandler(response => { 
+               try { 
+                   let data = typeof response === 'string' ? JSON.parse(response) : response;
+                   globalData = data;
+                   if (globalData.loanData && globalData.loanData.year) {
+                        loanDataCache[globalData.loanData.year] = globalData.loanData;
+                   }
+                   initDashboard();
+               } catch(e){ console.error(e); }
+               toggleLoading(false);
+           }).withFailureHandler(err => { alert(err.message); toggleLoading(false); }).getDashboardData();
+       }
+       if(viewId === 'view-loan') updateLoanView();
+       // view-billing eliminada
+    }
+
+    function fmtJS(num, decimals = 2) { if (num === undefined || num === null) return "--"; return num.toLocaleString('de-DE', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }); }
+    function parseLocaleNumber(val) { if (!val) return 0; return parseFloat(String(val).replace(',', '.')); }
+
+    function initDashboard() {
+        if (!globalData || !globalData.constants) return;
+        document.getElementById('dash-preu').innerText = fmtJS(globalData.constants.preuGasoil, 3) + " €";
+        // Alerta Gasoil
+        const info = globalData.gasoilInfo || {};
+        document.getElementById('dash-real-price').innerText = fmtJS(info.lastRefillPrice, 3) + " €";
+        document.getElementById('dash-level-value').innerText = (info.lastLevelValue || 0) + " %";
+        document.getElementById('dash-last-level-date').innerText = info.lastLevelDate || "--";
+        
+        if(info.priceAlert) {
+             document.getElementById('alert-price').classList.remove('hidden');
+             document.getElementById('dash-no-alert').classList.add('hidden');
+             document.getElementById('dash-price-diff').innerText = info.priceDiffText;
+        } else {
+             document.getElementById('alert-price').classList.add('hidden');
+             document.getElementById('dash-no-alert').classList.remove('hidden');
+        }
+
+        initComparisonSelectors();
+        updateDynamicChart();
+        updateComparisonTable(); 
+    }
+
+    // --- GRÀFICS --- (Mateix codi de visualització, sense canvis lògics)
+    function updateDynamicChart() {
+        if (!globalData.chartDataRaw) return;
+        const periodMode = document.getElementById('chart-period').value; 
+        const data1Type = document.getElementById('chart-data1').value;
+        const data2Type = document.getElementById('chart-data2').value;
+        const monthlyData = prepareMonthlyData(globalData.chartDataRaw);
+        const processedData = processAccumulation(monthlyData, periodMode);
+        
+        const labels = processedData.map(d => d.label);
+        const ds1 = processedData.map(d => d[data1Type] || 0);
+        let datasets = [{ label: getLabel(data1Type), data: ds1, backgroundColor: getColor(data1Type), borderRadius: 4 }];
+        if (data2Type !== 'none') {
+            const ds2 = processedData.map(d => d[data2Type] || 0);
+            datasets.push({ label: getLabel(data2Type), data: ds2, backgroundColor: getColor(data2Type), borderRadius: 4 });
+        }
+        const ctx = document.getElementById('dynamicChart').getContext('2d');
+        if (dynamicChartInstance) dynamicChartInstance.destroy();
+        dynamicChartInstance = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
+    }
+
+    function initComparisonSelectors() {
+        const s1 = document.getElementById('compare-year-1');
+        const s2 = document.getElementById('compare-year-2');
+        if(s1.options.length > 0) return; // Ja inicialitzat
+        const cy = new Date().getFullYear();
+        const fill = (s, def) => {
+            s.innerHTML = '';
+            for(let y=cy+2; y>=cy-5; y--) {
+                let opt = document.createElement('option'); opt.value = y; opt.innerText = y;
+                if(y === def) opt.selected = true;
+                s.appendChild(opt);
+            }
+        };
+        fill(s1, cy);
+        fill(s2, cy-1);
+    }
+
+    async function fetchLoanDataPromise(year) {
+        if (loanDataCache[year]) return loanDataCache[year];
+        return new Promise((resolve, reject) => {
+            google.script.run.withSuccessHandler(res => {
+                loanDataCache[year] = res;
+                resolve(res);
+            }).withFailureHandler(reject).getLoanData(parseInt(year));
+        });
+    }
+
+    async function updateComparisonTable() {
+        const y1 = parseInt(document.getElementById('compare-year-1').value);
+        const y2 = parseInt(document.getElementById('compare-year-2').value);
+        
+        document.getElementById('th-y1').innerText = "ANY " + y1;
+        document.getElementById('th-y2').innerText = "ANY " + y2;
+
+        toggleLoading(true);
+        try {
+            await Promise.all([fetchLoanDataPromise(y1), fetchLoanDataPromise(y2)]);
+        } catch(e) { console.error(e); }
+        toggleLoading(false);
+
+        const d1 = getAnnualFinancialData(y1);
+        const d2 = getAnnualFinancialData(y2);
+
+        const container = document.getElementById('comparison-table-body');
+        container.innerHTML = '';
+
+        const addRow = (label, val1, val2, colorClass='') => {
+            const row = document.createElement('tr');
+            row.className = "comp-row " + colorClass;
+            row.innerHTML = `<td class="comp-cell text-slate-300 font-medium">${label}</td><td class="comp-cell comp-val text-white">${fmtJS(val1)} €</td><td class="comp-cell comp-val text-white">${fmtJS(val2)} €</td>`;
+            container.appendChild(row);
+        };
+        const addSection = (label) => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td colspan="3" class="section-head">${label}</td>`;
+            container.appendChild(row);
+        };
+
+        addSection("INGRESSOS");
+        addRow("Lloguers", d1.income.rent, d2.income.rent);
+        addRow("Calefacció/Gasoil", d1.income.heating, d2.income.heating);
+        addRow("TOTAL INGRESSOS", d1.totalIncome, d2.totalIncome, "comp-total text-emerald-400");
+
+        addSection("DESPESES");
+        let allProvs = Array.from(new Set([...Object.keys(d1.expenses.providers), ...Object.keys(d2.expenses.providers)])).sort();
+        allProvs.forEach(p => {
+            addRow(p, d1.expenses.providers[p] || 0, d2.expenses.providers[p] || 0);
+        });
+        addRow("Prèstec - Interessos", d1.expenses.interest, d2.expenses.interest, "text-rose-300");
+        addRow("Prèstec - Amortització", d1.expenses.amortization, d2.expenses.amortization, "text-pink-300");
+        addRow("TOTAL DESPESES", d1.totalExpenses, d2.totalExpenses, "comp-total text-rose-400");
+    }
+
+    function getAnnualFinancialData(year) {
+        let rent = 0; let heating = 0;
+        if (globalData.chartDataRaw && globalData.chartDataRaw.billing) {
+            globalData.chartDataRaw.billing.forEach(b => {
+                if (new Date(b.ts).getFullYear() === year) {
+                    rent += (b.rent_income || 0); heating += (b.diesel_income || 0);
+                }
+            });
+        }
+        let provs = {}; let totalProv = 0;
+        if (globalData.expenses) {
+            globalData.expenses.forEach(e => {
+                if(e.data && new Date(e.data).getFullYear() === year) {
+                    let total = (e.base || 0) + (e.quota || 0);
+                    let name = e.proveidor || "Altres";
+                    if (!provs[name]) provs[name] = 0;
+                    provs[name] += total; totalProv += total;
+                }
+            });
+        }
+        let interest = 0; let amortization = 0;
+        if (loanDataCache[year]) {
+            interest = loanDataCache[year].totals.interest;
+            amortization = loanDataCache[year].totals.amortization;
+        }
+        return {
+            income: { rent, heating },
+            expenses: { interest, amortization, providers: provs },
+            totalIncome: rent + heating,
+            totalExpenses: totalProv + interest + amortization
+        };
+    }
+
+    // --- LOAN VIEW ---
+    function initLoanView() {
+        const sel = document.getElementById('loan-year-select');
+        const currentYear = new Date().getFullYear();
+        sel.innerHTML = '';
+        for(let y = currentYear + 5; y >= currentYear - 5; y--) {
+            const opt = document.createElement('option'); opt.value = y; opt.innerText = y;
+            if(y === currentYear) opt.selected = true;
+            sel.appendChild(opt);
+        }
+    }
+
+    function updateLoanView() {
+        const year = parseInt(document.getElementById('loan-year-select').value);
+        const interest = parseFloat(document.getElementById('loan-interest-input').value);
+        const tbody = document.getElementById('loan-table-body');
+        tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center"><div class="loader mx-auto"></div></td></tr>';
+        
+        google.script.run.withSuccessHandler(data => {
+            loanDataCache[year] = data; 
+            document.getElementById('loan-year-total').innerText = fmtJS(data.totals.total) + " €";
+            tbody.innerHTML = '';
+            if (data.error) { tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-rose-400">${data.error}</td></tr>`; return; }
+            data.schedule.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800 transition border-b border-slate-800";
+                const mesName = ["Gen", "Feb", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Oct", "Nov", "Des"][row.mes - 1];
+                tr.innerHTML = `<td class="p-3 font-bold text-white">${mesName}</td><td class="p-3 text-right font-mono">${fmtJS(row.quota)}</td><td class="p-3 text-right font-mono text-rose-400">${fmtJS(row.interes)}</td><td class="p-3 text-right font-mono text-emerald-400">${fmtJS(row.amortitzacio)}</td><td class="p-3 text-right font-mono text-slate-500">${fmtJS(row.pendent)}</td>`;
+                tbody.appendChild(tr);
+            });
+            updateComparisonTable(); 
+        }).getLoanData(year, interest);
+    }
+
+    // --- REUTILITZABLES I LLISTES LECTURA ---
+    function getLabel(k){const m={'refills_cost_smoothed':'Cost Gasoil (Estimat)','refills_lit_smoothed':'Litres Càrrega (Estimat)','consumption_charged':'Ingrés Gasoil','rent_income':'Ingrés Lloguer','total_income':'Ingrés Total','consumption_lit':'Consum (L)'};return m[k]||k}
+    function getColor(k){const m={'refills_cost_smoothed':'#ef4444','refills_lit_smoothed':'#06b6d4','consumption_charged':'#3b82f6','rent_income':'#10b981','total_income':'#8b5cf6','consumption_lit':'#f59e0b'};return m[k]||'#94a3b8'}
+    function prepareMonthlyData(raw) {
+        let monthsMap = {};
+        raw.billing.forEach(item => {
+            let d = new Date(item.ts);
+            let k = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+            if (!monthsMap[k]) monthsMap[k] = { consumption_lit:0, consumption_charged:0, rent_income:0, total_income:0, refills_cost_smoothed:0, refills_lit_smoothed: 0 };
+            monthsMap[k].consumption_lit += item.lit || 0; monthsMap[k].consumption_charged += item.diesel_income || 0; monthsMap[k].rent_income += item.rent_income || 0; monthsMap[k].total_income += item.total_income || 0;
+        });
+        let refills = raw.refills.sort((a,b) => a.ts - b.ts);
+        for (let i = 0; i < refills.length; i++) {
+            let current = refills[i];
+            let prevTs = (i === 0) ? (current.ts - (1000*60*60*24*30)) : refills[i-1].ts;
+            let currentDate = new Date(current.ts); let prevDate = new Date(prevTs);
+            let monthsDiff = (currentDate.getFullYear() - prevDate.getFullYear()) * 12 + (currentDate.getMonth() - prevDate.getMonth());
+            if (monthsDiff < 1) monthsDiff = 1;
+            let monthlyCost = current.cost / monthsDiff; let monthlyLit = current.lit / monthsDiff;
+            let iterDate = new Date(prevDate); iterDate.setMonth(iterDate.getMonth() + 1);
+            while (iterDate <= currentDate) {
+                let k = `${iterDate.getFullYear()}-${String(iterDate.getMonth()+1).padStart(2,'0')}`;
+                if (!monthsMap[k]) monthsMap[k] = { consumption_lit:0, consumption_charged:0, rent_income:0, total_income:0, refills_cost_smoothed:0, refills_lit_smoothed: 0 };
+                monthsMap[k].refills_cost_smoothed += monthlyCost; monthsMap[k].refills_lit_smoothed += monthlyLit;
+                iterDate.setMonth(iterDate.getMonth() + 1);
+            }
+        }
+        let sortedKeys = Object.keys(monthsMap).sort();
+        return sortedKeys.map(k => { let [y, m] = k.split('-'); return { key: k, label: `${["Gen","Feb","Mar","Abr","Mai","Jun","Jul","Ago","Set","Oct","Nov","Des"][parseInt(m)-1]}-${y.substr(2)}`, ...monthsMap[k] }; });
+    }
+    function processAccumulation(data, period) {
+        if (period === 'all') return data;
+        let monthsToAccumulate = parseInt(period);
+        if (data.length === 0) return [];
+        let slice = data.slice(-monthsToAccumulate);
+        let totals = { label: `Últims ${monthsToAccumulate} mesos`, consumption_lit: 0, consumption_charged: 0, rent_income: 0, total_income: 0, refills_cost_smoothed: 0, refills_lit_smoothed: 0 };
+        slice.forEach(d => { totals.consumption_lit += d.consumption_lit; totals.consumption_charged += d.consumption_charged; totals.rent_income += d.rent_income; totals.total_income += d.total_income; totals.refills_cost_smoothed += d.refills_cost_smoothed; totals.refills_lit_smoothed += d.refills_lit_smoothed; });
+        return [totals];
+    }
+    
+    // --- LLISTATS READ ONLY ---
+    function loadContracts() { 
+        const list = document.getElementById('contracts-list'); list.innerHTML = ''; 
+        if (!globalData.contractes) return; 
+        globalData.contractes.forEach(c => { 
+            const div = document.createElement('div'); 
+            div.className = "card p-5 cursor-pointer hover:bg-slate-700/50 border-l-4 transition relative group " + (c.actiu === 'Sí' ? 'border-emerald-500' : 'border-slate-600 opacity-70'); 
+            div.onclick = () => viewContract(c.id); 
+            div.innerHTML = `<div class="flex justify-between items-start mb-2"><h3 class="font-bold text-white text-lg group-hover:text-indigo-400 transition">${c.id}</h3><span class="text-xs px-2 py-1 rounded bg-slate-900 border border-slate-700 text-slate-400 font-mono">${fmtJS(c.preuLloguer)} €</span></div><p class="text-sm text-slate-400 font-medium truncate">${c.titular || '<span class="italic text-slate-600">Sense titular</span>'}</p>`; 
+            list.appendChild(div); 
+        }); 
+    }
+    
+    function viewContract(id) { 
+        const contract = globalData.contractes.find(c => c.id === id); if(!contract) return; 
+        nav('view-contract-edit'); 
+        document.getElementById('edit-id-pis').innerText = contract.id; 
+        document.getElementById('edit-titular').value = contract.titular; 
+        document.getElementById('edit-nrt').value = contract.nrt; 
+        document.getElementById('edit-adreca').value = contract.adreca; 
+        document.getElementById('edit-poblacio').value = contract.poblacio; 
+        document.getElementById('edit-parroquia').value = contract.parroquia; 
+        document.getElementById('edit-preu').value = contract.preuLloguer; 
+        document.getElementById('edit-igi').value = contract.igiTipus; 
+        document.getElementById('edit-mail').value = contract.mail; 
+        document.getElementById('edit-telefon').value = contract.telefon; 
+        document.getElementById('edit-iban').value = contract.iban; 
+        if(contract.dataFi) try { document.getElementById('edit-data-fi').valueAsDate = new Date(contract.dataFi); } catch(e){} 
+        document.getElementById('edit-actiu').value = contract.actiu || "Sí"; 
+        document.getElementById('edit-ipc').value = contract.aplicaIPC || "No"; 
+    }
+    
+    function loadExpensesList() { 
+        toggleLoading(true); 
+        google.script.run.withSuccessHandler(response => { 
+            toggleLoading(false); 
+            try { 
+                const res = JSON.parse(response); 
+                if (res.error) { alert("Error: " + res.error); return; } 
+                const tbody = document.getElementById('expenses-table-body'); tbody.innerHTML = ''; 
+                if (res.expenses && res.expenses.length > 0) { 
+                    res.expenses.forEach(exp => { 
+                        const row = document.createElement('tr'); row.className = "hover:bg-slate-800 transition"; 
+                        const d = new Date(exp.data).toLocaleDateString('ca-ES'); 
+                        row.innerHTML = `<td class="p-4"><div class="font-bold text-white">${d}</div><div class="text-xs text-slate-500">${exp.semestre}</div></td><td class="p-4 text-white font-medium">${exp.proveidor}<br><span class="text-xs text-slate-500 font-mono">${exp.nrt}</span></td><td class="p-4 text-slate-300">${exp.num}</td><td class="p-4 text-right font-mono text-emerald-400">${fmtJS(exp.base)} €</td><td class="p-4 text-right font-mono text-slate-400">${(exp.tipus*100).toFixed(1)}%</td>`; 
+                        tbody.appendChild(row); 
+                    }); 
+                } else { tbody.innerHTML = `<tr><td colspan="5" class="p-8 text-center text-slate-500">No hi ha factures.</td></tr>`; } 
+            } catch(e) { console.error(e); } 
+        }).withFailureHandler(err => { toggleLoading(false); alert(err.message); }).getExpensesData(); 
+    }
+  </script>
+</body>
+</html>
