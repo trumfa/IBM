@@ -94,7 +94,7 @@
 
     <div class="flex-1 overflow-y-auto p-4 md:p-10">
       
-      <!-- DASHBOARD (Sense botons d'acció) -->
+      <!-- DASHBOARD -->
       <div id="view-dashboard" class="space-y-8 max-w-full mx-auto">
          <header class="flex justify-between items-end">
             <div>
@@ -316,21 +316,47 @@
         Chart.defaults.borderColor = '#334155';
     }
 
+    // --- INICIALITZACIÓ SEGURA I SEQÜENCIAL ---
     window.onload = function() {
       document.getElementById('current-date-display').innerText = new Date().toLocaleDateString('ca-ES');
       toggleLoading(true);
+      
       google.script.run.withSuccessHandler(response => {
          try {
+             // 1. Processar dades
              let data = typeof response === 'string' ? JSON.parse(response) : response;
              if (data.error) throw new Error(data.error);
              globalData = data;
-             if (globalData.loanData && globalData.loanData.year) loanDataCache[globalData.loanData.year] = globalData.loanData;
              
-             initDashboard();
+             // 2. Cache prèstec si existeix
+             if (globalData.loanData && globalData.loanData.year) {
+                 loanDataCache[globalData.loanData.year] = globalData.loanData;
+             }
+
+             // 3. Inicialitzar vistes (síncronament primer)
+             initDashboardUI(); // Només posa textos i crea selectors
              initLoanView(); 
-             // No omplim desplegables de nou registre perquè no hi són
-         } catch (e) { console.error(e); alert("Error carregant: " + e.message); } finally { toggleLoading(false); }
-      }).withFailureHandler(err => { alert(err.message); toggleLoading(false); }).getDashboardData();
+
+             // 4. Executar càrregues asíncrones finals (sense bloquejar si fallen)
+             Promise.all([
+                 updateDynamicChart(),
+                 updateComparisonTable() // Aquesta crida internament al server si cal
+             ]).then(() => {
+                 toggleLoading(false);
+             }).catch(e => {
+                 console.error("Error en càrrega secundària:", e);
+                 toggleLoading(false); // Assegurar que es tanca igualment
+             });
+
+         } catch (e) { 
+             console.error(e); 
+             alert("Error carregant: " + e.message); 
+             toggleLoading(false);
+         }
+      }).withFailureHandler(err => { 
+          alert(err.message); 
+          toggleLoading(false); 
+      }).getDashboardData();
     };
 
     function toggleLoading(show) { const el = document.getElementById('loading-indicator'); if(el) { if(show) el.classList.remove('hidden'); else el.classList.add('hidden'); } }
@@ -346,32 +372,34 @@
        const btn = document.getElementById(btnId);
        if(btn) btn.classList.add('active');
        
-       // REFRESH DASHBOARD ON CLICK
        if(viewId === 'view-dashboard') {
-           toggleLoading(true); 
-           google.script.run.withSuccessHandler(response => { 
+           // Reload Dashboard Data
+           toggleLoading(true);
+           google.script.run.withSuccessHandler(res => { 
                try { 
-                   let data = typeof response === 'string' ? JSON.parse(response) : response;
-                   globalData = data;
-                   if (globalData.loanData && globalData.loanData.year) {
-                        loanDataCache[globalData.loanData.year] = globalData.loanData;
-                   }
-                   initDashboard();
-               } catch(e){ console.error(e); }
-               toggleLoading(false);
-           }).withFailureHandler(err => { alert(err.message); toggleLoading(false); }).getDashboardData();
+                   globalData = JSON.parse(res); 
+                   if (globalData.loanData && globalData.loanData.year) loanDataCache[globalData.loanData.year] = globalData.loanData;
+                   initDashboardUI();
+                   updateDynamicChart();
+                   updateComparisonTable().then(() => toggleLoading(false));
+               } catch(e){ console.error(e); toggleLoading(false); }
+           }).getDashboardData();
+       } else if(viewId === 'view-loan') {
+           updateLoanView();
+       } else if (viewId === 'view-expense-list') { // FIXED: Corrected ID match
+           loadExpensesList();
        }
-       if(viewId === 'view-loan') updateLoanView();
-       // view-billing eliminada
     }
 
     function fmtJS(num, decimals = 2) { if (num === undefined || num === null) return "--"; return num.toLocaleString('de-DE', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }); }
-    function parseLocaleNumber(val) { if (!val) return 0; return parseFloat(String(val).replace(',', '.')); }
 
-    function initDashboard() {
+    // --- DASHBOARD LOGIC ---
+    function initDashboardUI() {
         if (!globalData || !globalData.constants) return;
+        
+        // KPIS
         document.getElementById('dash-preu').innerText = fmtJS(globalData.constants.preuGasoil, 3) + " €";
-        // Alerta Gasoil
+        
         const info = globalData.gasoilInfo || {};
         document.getElementById('dash-real-price').innerText = fmtJS(info.lastRefillPrice, 3) + " €";
         document.getElementById('dash-level-value').innerText = (info.lastLevelValue || 0) + " %";
@@ -386,14 +414,14 @@
              document.getElementById('dash-no-alert').classList.remove('hidden');
         }
 
+        // Initialize Selectors only if empty
         initComparisonSelectors();
-        updateDynamicChart();
-        updateComparisonTable(); 
     }
 
-    // --- GRÀFICS --- (Mateix codi de visualització, sense canvis lògics)
+    // --- GRÀFICS --- 
     function updateDynamicChart() {
-        if (!globalData.chartDataRaw) return;
+        if (!globalData.chartDataRaw) return Promise.resolve();
+        
         const periodMode = document.getElementById('chart-period').value; 
         const data1Type = document.getElementById('chart-data1').value;
         const data2Type = document.getElementById('chart-data2').value;
@@ -407,15 +435,17 @@
             const ds2 = processedData.map(d => d[data2Type] || 0);
             datasets.push({ label: getLabel(data2Type), data: ds2, backgroundColor: getColor(data2Type), borderRadius: 4 });
         }
+        
         const ctx = document.getElementById('dynamicChart').getContext('2d');
         if (dynamicChartInstance) dynamicChartInstance.destroy();
         dynamicChartInstance = new Chart(ctx, { type: 'bar', data: { labels: labels, datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#cbd5e1' } } }, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } } });
+        return Promise.resolve();
     }
 
     function initComparisonSelectors() {
         const s1 = document.getElementById('compare-year-1');
         const s2 = document.getElementById('compare-year-2');
-        if(s1.options.length > 0) return; // Ja inicialitzat
+        if(s1.options.length > 0) return; 
         const cy = new Date().getFullYear();
         const fill = (s, def) => {
             s.innerHTML = '';
@@ -446,11 +476,10 @@
         document.getElementById('th-y1').innerText = "ANY " + y1;
         document.getElementById('th-y2').innerText = "ANY " + y2;
 
-        toggleLoading(true);
+        // Try to fetch loan data. If it fails, we continue with what we have.
         try {
             await Promise.all([fetchLoanDataPromise(y1), fetchLoanDataPromise(y2)]);
-        } catch(e) { console.error(e); }
-        toggleLoading(false);
+        } catch(e) { console.error("Error fetching loan data for table:", e); }
 
         const d1 = getAnnualFinancialData(y1);
         const d2 = getAnnualFinancialData(y2);
@@ -548,11 +577,14 @@
                 tr.innerHTML = `<td class="p-3 font-bold text-white">${mesName}</td><td class="p-3 text-right font-mono">${fmtJS(row.quota)}</td><td class="p-3 text-right font-mono text-rose-400">${fmtJS(row.interes)}</td><td class="p-3 text-right font-mono text-emerald-400">${fmtJS(row.amortitzacio)}</td><td class="p-3 text-right font-mono text-slate-500">${fmtJS(row.pendent)}</td>`;
                 tbody.appendChild(tr);
             });
-            updateComparisonTable(); 
+            // Update table if year matches
+            if(document.getElementById('compare-year-1').value == year || document.getElementById('compare-year-2').value == year) {
+                updateComparisonTable();
+            }
         }).getLoanData(year, interest);
     }
 
-    // --- REUTILITZABLES I LLISTES LECTURA ---
+    // --- REUTILITZABLES ---
     function getLabel(k){const m={'refills_cost_smoothed':'Cost Gasoil (Estimat)','refills_lit_smoothed':'Litres Càrrega (Estimat)','consumption_charged':'Ingrés Gasoil','rent_income':'Ingrés Lloguer','total_income':'Ingrés Total','consumption_lit':'Consum (L)'};return m[k]||k}
     function getColor(k){const m={'refills_cost_smoothed':'#ef4444','refills_lit_smoothed':'#06b6d4','consumption_charged':'#3b82f6','rent_income':'#10b981','total_income':'#8b5cf6','consumption_lit':'#f59e0b'};return m[k]||'#94a3b8'}
     function prepareMonthlyData(raw) {
